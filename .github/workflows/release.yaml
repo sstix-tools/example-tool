@@ -145,13 +145,20 @@ jobs:
             '{
               name: $name,
               version: $version,
+              type: "bash-utility",
+              description: "Small shell utility storing state under XDG data directories",
               source_archive: $source,
               source_hash: $source_hash,
-              apt_package: ("example-tool_" + $version + "_all.deb"),
-              rpm_package: ("example-tool-" + $version + "-1.noarch.rpm"),
+              apt_packages: [("example-tool_" + $version + "_all.deb")],
+              rpm_packages: [("example-tool-" + $version + "-1.noarch.rpm")],
+              dependencies: ["jq"],
+              executables: ["example-tool"],
+              completions: ["_example-tool"],
               nix_systems: [
                 "aarch64-darwin",
-                "x86_64-darwin"
+                "x86_64-darwin",
+                "x86_64-linux",
+                "aarch64-linux"
               ]
             }' \
             > build/manifest.json
@@ -176,3 +183,17 @@ jobs:
             --title "example-tool $VERSION" \
             --generate-notes \
             "${assets[@]}"
+
+      - name: Trigger registry update
+        if: always()
+        env:
+          DISPATCH_TOKEN: ${{ secrets.REGISTRY_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          echo "Notifying registry of new release..."
+          curl -s -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $DISPATCH_TOKEN" \
+            https://api.github.com/repos/sstix-tools/registry/dispatches \
+            -d '{"event_type": "tool_release", "client_payload": {"repository": "${{ github.repository }}", "tag": "${{ github.ref_name }}"}}' \
+            || true
