@@ -1,0 +1,2 @@
+bin/example-tool usr/bin
+completion/_example-tool usr/share/zsh/site-functions

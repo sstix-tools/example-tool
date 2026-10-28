@@ -1,0 +1,165 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev rpm jq
+
+      - name: Create source archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p build/source
+
+          install -D -m 0755 bin/example-tool \
+            "build/source/example-tool-$VERSION/bin/example-tool"
+
+          install -D -m 0644 completion/_example-tool \
+            "build/source/example-tool-$VERSION/completion/_example-tool"
+
+          install -D -m 0644 LICENSE \
+            "build/source/example-tool-$VERSION/LICENSE"
+
+          tar \
+            --directory build/source \
+            --create \
+            --gzip \
+            --file "build/example-tool-$VERSION.tar.gz" \
+            "example-tool-$VERSION"
+
+      - name: Calculate source hash
+        id: source_hash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          sudo apt-get install -y curl
+
+          # Install Nix only for hash formatting.
+          sh <(curl -L https://nixos.org/nix/install) --no-daemon --yes
+
+          . /home/runner/.nix-profile/etc/profile.d/nix-daemon.sh 2>/dev/null || true
+
+          hash="$(nix hash file --type sha256 --sri \
+            "build/example-tool-$VERSION.tar.gz")"
+
+          printf '%s\n' "$hash" \
+            > "build/example-tool-$VERSION.tar.gz.sri"
+
+      - name: Build Debian package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          package="example-tool"
+          root="build/deb/${package}_${VERSION}_all"
+
+          mkdir -p \
+            "$root/DEBIAN" \
+            "$root/usr/bin" \
+            "$root/usr/share/zsh/site-functions"
+
+          install -m 0755 bin/example-tool \
+            "$root/usr/bin/example-tool"
+
+          install -m 0644 completion/_example-tool \
+            "$root/usr/share/zsh/site-functions/_example-tool"
+
+          cat > "$root/DEBIAN/control" <<EOF
+          Package: example-tool
+          Version: $VERSION
+          Section: utils
+          Priority: optional
+          Architecture: all
+          Maintainer: My Tools <tools@example.invalid>
+          Depends: jq
+          Description: Small example utility
+           A small shell utility that stores state under XDG data directories.
+          EOF
+
+          dpkg-deb \
+            --build \
+            --root-owner-group \
+            "$root" \
+            "build/example-tool_${VERSION}_all.deb"
+
+      - name: Build RPM package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p build/rpm/SOURCES build/rpm/SPECS build/rpm/RPMS
+
+          cp bin/example-tool build/rpm/SOURCES/example-tool
+          cp completion/_example-tool build/rpm/SOURCES/_example-tool
+
+          sed "s/%{version}/$VERSION/" \
+            packaging/rpm/example-tool.spec \
+            > build/rpm/SPECS/example-tool.spec
+
+          rpmbuild \
+            --define "_topdir $PWD/build/rpm" \
+            --define "_sourcedir $PWD/build/rpm/SOURCES" \
+            --define "_rpmdir $PWD/build/rpm/RPMS" \
+            -bb build/rpm/SPECS/example-tool.spec
+
+          find build/rpm/RPMS -name '*.rpm' -exec cp {} build/ \;
+
+      - name: Create release manifest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          source_asset="example-tool-$VERSION.tar.gz"
+          source_hash="$(cat "build/$source_asset.sri")"
+
+          jq -n \
+            --arg name "example-tool" \
+            --arg version "$VERSION" \
+            --arg source "$source_asset" \
+            --arg source_hash "$source_hash" \
+            '{
+              name: $name,
+              version: $version,
+              source_archive: $source,
+              source_hash: $source_hash,
+              apt_package: ("example-tool_" + $version + "_all.deb"),
+              rpm_package: ("example-tool-" + $version + "-1.noarch.rpm"),
+              nix_systems: [
+                "aarch64-darwin",
+                "x86_64-darwin"
+              ]
+            }' \
+            > build/manifest.json
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "example-tool $VERSION" \
+            --generate-notes \
+            build/*

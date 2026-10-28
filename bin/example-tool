@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+
+name="example-tool"
+
+data_home="${XDG_DATA_HOME:-"$HOME/.local/share"}"
+config_home="${XDG_CONFIG_HOME:-"$HOME/.config"}"
+
+data_dir="$data_home/$name"
+config_dir="$config_home/$name"
+config_file="$config_dir/config.json"
+state_file="$data_dir/state.json"
+
+mkdir -p "$data_dir" "$config_dir"
+
+if [ ! -f "$config_file" ]; then
+    cat > "$config_file" <<'EOF'
+{
+  "message": "hello from example-tool"
+}
+EOF
+fi
+
+if [ ! -f "$state_file" ]; then
+    printf '%s\n' '{"runs": 0}' > "$state_file"
+fi
+
+runs="$(jq -r '.runs // 0' "$state_file")"
+message="$(jq -r '.message // "hello"' "$config_file")"
+
+runs=$((runs + 1))
+
+jq --argjson runs "$runs" '.runs = $runs' "$state_file" > "$state_file.tmp"
+mv "$state_file.tmp" "$state_file"
+
+printf '%s\n' "$message"
+printf 'Run count: %s\n' "$runs"
+printf 'State: %s\n' "$state_file"

@@ -1,0 +1,14 @@
+#compdef example-tool
+
+_arguments \
+  '(-h --help)'{-h,--help}'[show help]' \
+  '1: :->command' \
+  '*::arg:->args'
+
+case "$state" in
+  command)
+    _values 'command' \
+      'run[run the utility]' \
+      'status[show current state]'
+    ;;
+esac
