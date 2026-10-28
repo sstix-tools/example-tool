@@ -160,8 +160,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
         run: |
+          mapfile -d '' assets < <(
+            find build \
+              -maxdepth 1 \
+              -type f \
+              -print0
+          )
+
+          printf 'Release assets:\n'
+          printf ' - %s\n' "${assets[@]}"
+
           gh release create "$GITHUB_REF_NAME" \
             --title "example-tool $VERSION" \
             --generate-notes \
-            build/*
+            "${assets[@]}"
