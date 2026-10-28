@@ -58,18 +58,20 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          sudo apt-get install -y curl
+          archive="build/example-tool-$VERSION.tar.gz"
 
-          # Install Nix only for hash formatting.
-          sh <(curl -L https://nixos.org/nix/install) --no-daemon --yes
+          digest="$(
+            sha256sum "$archive" |
+            awk '{print $1}' |
+            xxd -r -p |
+            base64 -w 0
+          )"
 
-          . /home/runner/.nix-profile/etc/profile.d/nix-daemon.sh 2>/dev/null || true
-
-          hash="$(nix hash file --type sha256 --sri \
-            "build/example-tool-$VERSION.tar.gz")"
-
-          printf '%s\n' "$hash" \
+          printf 'sha256-%s\n' "$digest" \
             > "build/example-tool-$VERSION.tar.gz.sri"
+
+          echo "Generated Nix hash:"
+          cat "build/example-tool-$VERSION.tar.gz.sri"
 
       - name: Build Debian package
         env:
