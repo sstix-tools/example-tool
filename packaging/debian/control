@@ -1,7 +1,7 @@
 Source: example-tool
 Section: utils
 Priority: optional
-Maintainer: sstix-tools <simeon.stix@protonmail.ch>
+Maintainer: sstix-tools <sstix@stix.foo>
 Standards-Version: 4.6.0
 Build-Depends: debhelper-compat (= 13)
 Rules-Requires-Root: no

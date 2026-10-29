@@ -97,7 +97,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Maintainer: My Tools <tools@example.invalid>
+          Maintainer: My Tools <sstix@stix.foo>
           Depends: jq
           Description: Small example utility
            A small shell utility that stores state under XDG data directories.
